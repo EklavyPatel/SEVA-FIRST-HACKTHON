@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.*
+api.env
+*.env
+!.env.example
+.sites-runtime/
+artifacts/
+*.log

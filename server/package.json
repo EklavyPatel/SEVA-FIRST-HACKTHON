@@ -1,0 +1,7 @@
+{
+  "name": "kapasmitra-gemini-backend",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "dependencies": { "@google/genai": "2.31.0" }
+}
