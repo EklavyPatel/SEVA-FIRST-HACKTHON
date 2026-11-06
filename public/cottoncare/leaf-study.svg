@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 460" fill="none">
+  <defs>
+    <linearGradient id="leaf" x1="115" y1="60" x2="300" y2="346" gradientUnits="userSpaceOnUse"><stop stop-color="#e2ee9c"/><stop offset=".29" stop-color="#aace61"/><stop offset=".62" stop-color="#7da044"/><stop offset="1" stop-color="#3c6b35"/></linearGradient>
+    <linearGradient id="fold" x1="225" y1="65" x2="180" y2="329" gradientUnits="userSpaceOnUse"><stop stop-color="#edf5ba" stop-opacity=".65"/><stop offset="1" stop-color="#b0cf72" stop-opacity="0"/></linearGradient>
+    <linearGradient id="stem" x1="216" y1="310" x2="201" y2="433" gradientUnits="userSpaceOnUse"><stop stop-color="#a9c880"/><stop offset="1" stop-color="#638454"/></linearGradient>
+    <filter id="texture"><feTurbulence type="fractalNoise" baseFrequency=".09" numOctaves="3" seed="8" result="noise"/><feColorMatrix in="noise" type="saturate" values="0"/><feBlend in="SourceGraphic" mode="soft-light"/></filter>
+    <clipPath id="shape"><path d="M210 342C187 333 171 332 157 315L94 326 105 286C78 273 56 248 39 219L105 217C93 179 91 147 104 110L169 172C171 130 181 74 209 28C235 76 248 118 249 160L307 98C320 136 321 174 303 210L376 193C365 237 344 265 307 282L328 318 263 310C247 326 228 334 210 342Z"/></clipPath>
+  </defs>
+  <path d="M211 326C206 366 212 399 200 438" stroke="url(#stem)" stroke-width="7" stroke-linecap="round"/>
+  <g clip-path="url(#shape)">
+    <path d="M25 15H395V355H25Z" fill="url(#leaf)"/>
+    <path d="M210 28 211 342 169 172Z" fill="#304f26" opacity=".15"/>
+    <path d="M210 28 249 160 211 342Z" fill="url(#fold)"/>
+    <path d="M104 110 189 274 156 225Z" fill="#e5ef9e" opacity=".2"/>
+    <path d="M307 98 232 278 267 220Z" fill="#244b2c" opacity=".19"/>
+    <path d="M39 219 211 342 151 277Z" fill="#d9e99c" opacity=".12"/>
+    <g stroke="#e4efb2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M210 338C211 267 217 146 209 33" stroke-width="2.8"/>
+      <path d="M211 310C184 267 141 200 104 115M211 312C242 260 278 172 306 104M209 333C157 300 92 259 44 222M214 332C263 298 329 247 371 197" stroke-width="1.9"/>
+      <g stroke-width="1" opacity=".7">
+        <path d="M211 114 185 88M213 149 175 121M214 187 172 157M214 222 175 198M213 257 182 239M212 291 187 279M214 110 230 79M215 145 240 112M215 180 247 148M215 217 244 186M214 251 244 224M212 287 237 262"/>
+        <path d="M166 224 119 199M182 252 136 244M150 196 107 164M137 173 112 133M167 224 167 181M183 253 184 222M150 196 142 161M252 229 282 211M265 198 301 178M278 166 310 139M252 229 252 192M265 198 267 163M237 267 279 247M237 267 239 235"/>
+        <path d="M156 298 108 299M129 280 90 279M101 262 70 253M156 298 141 270M129 280 118 250M263 298 305 303M290 278 318 274M319 253 348 236M263 298 277 268M290 278 298 246"/>
+      </g>
+      <g stroke-width=".55" opacity=".35"><path d="m186 91 15 41-24-13 24 49-27-16 27 53-27-10 27 45-17-3 18 39M233 88l-10 42 19-12-20 47 23-14-24 50 20-10-21 47 20-11-20 48M110 133l29 53-28-16 45 58-31-13 47 40-29-2 46 34M302 131l-30 55 27-17-40 53 29-13-42 48 31-10-45 43M70 238l62 45-36-5 74 31M347 217l-51 52 29-10-64 44"/></g>
+    </g>
+    <rect x="25" y="15" width="370" height="340" fill="#79913b" opacity=".1" filter="url(#texture)"/>
+    <path d="M210 342C187 333 171 332 157 315L94 326 105 286C78 273 56 248 39 219L105 217C93 179 91 147 104 110L169 172C171 130 181 74 209 28C235 76 248 118 249 160L307 98C320 136 321 174 303 210L376 193C365 237 344 265 307 282L328 318 263 310C247 326 228 334 210 342Z" stroke="#d0e18a" stroke-opacity=".5" stroke-width="2.5"/>
+  </g>
+</svg>

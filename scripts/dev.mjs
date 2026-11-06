@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 
 const processes = [
   spawn(process.execPath, ['--watch', 'server/index.js'], { stdio: 'inherit' }),
-  spawn(process.execPath, ['node_modules/vite/bin/vite.js'], { stdio: 'inherit' }),
+  // Preserve normal Vite flags for local and hosted development previews.
+  spawn(process.execPath, ['node_modules/vite/bin/vite.js', ...process.argv.slice(2)], { stdio: 'inherit' }),
 ];
 let stopping = false;
 function stop(code = 0) {

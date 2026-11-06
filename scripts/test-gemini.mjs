@@ -7,7 +7,11 @@ import { callHandler } from '../tests/http.js';
 
 // One explicitly requested live call. Never log secrets, request bodies, or provider errors.
 loadBackendEnvironment();
-const sample = resolve(process.argv[2] || 'tests/fixtures/cotton-illustration.jpg');
+const args = process.argv.slice(2);
+const language = args.find(value => value.startsWith('--language='))?.split('=')[1] || 'gu';
+if (!['gu','en'].includes(language)) { console.error('Use --language=gu or --language=en.'); process.exit(1); }
+const withFollowup = args.includes('--followup');
+const sample = resolve(args.find(value => !value.startsWith('--')) || 'tests/fixtures/cotton-illustration.jpg');
 let stage = 'file';
 try {
   const info = await stat(sample);
@@ -21,7 +25,7 @@ try {
   } else {
     stage = 'analysis';
     const response = await callHandler(createApp({ apiKey: process.env.GEMINI_API_KEY.trim(), model: process.env.GEMINI_MODEL || 'gemini-3.8-flash' }),
-      { body: { mode: 'live', language: 'gu', image } });
+      { body: { mode: 'live', consent: true, language, image } });
     if (response.status !== 200) {
       // Error codes come from our allowlisted backend, never raw SDK messages.
       console.error(JSON.stringify({ success: false, status: response.status, code: response.body.error?.code || 'UNKNOWN' }));
@@ -30,7 +34,12 @@ try {
       const { analysis } = response.body;
       console.log(JSON.stringify({ success: true, language: response.body.language,
         possibleCausesCount: analysis.possibilities.length, uncertainty: analysis.uncertainty.level,
-        hasGujaratiExplanation: /[\u0a80-\u0aff]/u.test(analysis.explanation_gu), expertReviewRequired: true }));
+        selectedLanguageVerified: language === 'gu' ? /[\u0a80-\u0aff]/u.test(analysis.explanation_gu) : typeof analysis.explanation === 'string' && !/[\u0a80-\u0aff]/u.test(analysis.explanation), expertReviewRequired: true }));
+      if (withFollowup) {
+        const followup = await callHandler(createApp({apiKey:process.env.GEMINI_API_KEY.trim(),model:process.env.GEMINI_MODEL || 'gemini-3.8-flash'}), {path:'/api/followup',body:{image,language,consent:true,history:[],question:language==='gu'?'વધુ સ્પષ્ટ ફોટો કેવી રીતે લઉં?':'How can I take a clearer photo?',initialObservation:JSON.stringify(analysis)}});
+        console.log(JSON.stringify({stage:'followup',success:followup.status===200,status:followup.status,language,code:followup.body.error?.code || null,selectedLanguageVerified:followup.status===200 && (language==='gu'?/[\u0a80-\u0aff]/u.test(followup.body.answer):!/[\u0a80-\u0aff]/u.test(followup.body.answer))}));
+        if(followup.status!==200)process.exitCode=1;
+      }
     }
   }
 } catch (error) {

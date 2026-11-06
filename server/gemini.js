@@ -1,4 +1,8 @@
+import { dosagePattern, percentagePattern } from './output-safety.js';
+import { requireOutputLanguage, languageInstruction } from './output-language.js';
 import { ApiError } from './errors.js';
+import { quotaGuidance } from './gemini-quota.js';
+import { inspectGeminiError } from './gemini-diagnostics.js';
 import { createGeminiClient } from './google-client.js';
 import { renameAnalysis, englishResponseSchema } from '../shared/analysis-language.js';
 
@@ -46,10 +50,10 @@ export function validateAnalysis(value) {
   // Defense in depth: reject treatment/dosage language instead of rendering it.
   // This is not a substitute for editorial approval; model output is never treatment guidance.
   const text = JSON.stringify(value);
-  if (/[0-9૦-૯]+(?:[.,][0-9૦-૯]+)?\s*[%٪]/u.test(text)) {
+  if (percentagePattern.test(text)) {
     throw new ApiError(502, 'UNSAFE_MODEL_RESPONSE', 'AI ના જવાબને સુરક્ષિત રીતે બતાવી શકાયો નથી. કૃષિ નિષ્ણાતની મદદ લો.');
   }
-  if (/(?:pesticid|fungicid|insecticid|spray|dosage|છંટકાવ|કીટનાશક|જંતુનાશક|ફૂગનાશક|મિલિલિટર|મિલીલીટર|\d\s*(?:ml|mg|grams?|litres?|લિટર|ગ્રામ)\b)/iu.test(text)) {
+  if (dosagePattern.test(text) || /(?:pesticid|fungicid|insecticid|spray|dosage|છંટકાવ|કીટનાશક|જંતુનાશક|ફૂગનાશક|મિલિલિટર|મિલીલીટર)/iu.test(text)) {
     throw new ApiError(502, 'UNSAFE_MODEL_RESPONSE', 'AI ના જવાબને સુરક્ષિત રીતે બતાવી શકાયો નથી. કૃષિ નિષ્ણાતની મદદ લો.');
   }
   // Explicit allowlist also drops unexpected model fields such as treatment/source.
@@ -62,12 +66,17 @@ export function validateAnalysis(value) {
   };
 }
 
-export async function analyzeWithGemini(image, { apiKey, model, fetchImpl, signal, language = 'gu', clientFactory = createGeminiClient }) {
+export async function analyzeWithGemini(image, { apiKey, model, fetchImpl, signal, language = 'gu', onMetadata = () => {}, clientFactory = createGeminiClient }) {
   if (!apiKey) throw new ApiError(503, 'AI_NOT_CONFIGURED', 'લાઇવ AI હજી ઉપલબ્ધ નથી. સ્પષ્ટ રીતે દર્શાવેલો ડેમો અજમાવી શકો છો.');
   if (!/^[a-zA-Z0-9._-]{1,80}$/.test(model)) throw new ApiError(503, 'AI_CONFIGURATION', 'AI સેટિંગમાં સમસ્યા છે. પછીથી પ્રયાસ કરો.');
   let response;
+  let stage = 'sdk_initialization';
+  const started = performance.now();
+  const deadline = AbortSignal.timeout(45_000);
+  const abortSignal = AbortSignal.any([deadline, ...(signal ? [signal] : [])]);
   try {
     const client = await clientFactory({ apiKey, fetchImpl });
+    stage = 'generate_content';
     response = await client.models.generateContent({
       model,
       contents: [{ role: 'user', parts: [
@@ -75,24 +84,44 @@ export async function analyzeWithGemini(image, { apiKey, model, fetchImpl, signa
         { inlineData: { mimeType: image.mimeType, data: image.base64 } },
       ] }],
       config: {
-        systemInstruction: language === 'en' ? systemPrompt.replace('Gujarati-speaking', 'English-speaking').replace('All _gu fields must be plain Gujarati.', 'All descriptive fields must be plain English.').replace('uncertainty in Gujarati', 'uncertainty in English') : systemPrompt,
+        systemInstruction: languageInstruction(language) + "\n" + (language === 'en' ? systemPrompt.replace('Gujarati-speaking', 'English-speaking').replace('All _gu fields must be plain Gujarati.', 'All descriptive fields must be plain English.').replace('uncertainty in Gujarati', 'uncertainty in English') : systemPrompt),
         responseMimeType: 'application/json',
         responseSchema: language === 'en' ? englishResponseSchema(responseSchema) : responseSchema,
         maxOutputTokens: 4096,
-        abortSignal: AbortSignal.any([AbortSignal.timeout(45_000), ...(signal ? [signal] : [])]),
+        abortSignal,
       },
     });
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    // SDK errors may contain credential-bearing URLs, request details, or provider text.
-    // Only inspect numeric status/name; never expose or log the original error object.
-    const status = Number(error?.status || error?.code);
-    if (status === 429) throw new ApiError(429, 'AI_RATE_LIMIT', 'હાલ AI વ્યસ્ત છે. થોડી વાર પછી ફરી પ્રયાસ કરો.');
-    if ([401, 403, 404].includes(status)) throw new ApiError(503, 'AI_CONFIGURATION', 'AI સેટિંગમાં સમસ્યા છે. પછીથી પ્રયાસ કરો.');
-    if (status === 408 || status === 504 || ['AbortError', 'TimeoutError'].includes(error?.name) || !status) {
-      throw new ApiError(504, 'AI_UNAVAILABLE', 'AI સુધી પહોંચી શકાયું નથી અથવા સમય પૂરો થયો. ફરી પ્રયાસ કરો.');
+    const inspected = inspectGeminiError(error);
+    const status = inspected.upstreamStatus;
+    const networkCode = inspected.networkCode;
+    const diagnostics = {
+      ...inspected, stage,
+      geminiMs: Math.round(performance.now() - started),
+      abortSource: signal?.aborted ? 'client' : deadline.aborted ? 'deadline' : null,
+    };
+    if (status === 429) {
+      const guidance = quotaGuidance(error);
+      const message = language === 'en'
+        ? guidance.quotaKind === 'daily' ? 'Gemini daily quota is exhausted. Wait for the quota to reset or check your project quota in AI Studio.'
+          : guidance.retryAfterSeconds !== null ? `Gemini rate limit reached. Wait at least ${guidance.retryAfterSeconds} seconds before trying again.`
+          : 'Gemini quota or rate limit reached. Check your project quota in AI Studio before trying again.'
+        : guidance.quotaKind === 'daily' ? 'Gemini ની દૈનિક મર્યાદા પૂરી થઈ છે. મર્યાદા ફરી ઉપલબ્ધ થાય ત્યાં સુધી રાહ જુઓ અથવા AI Studio માં તપાસો.'
+          : guidance.retryAfterSeconds !== null ? `Gemini ની મર્યાદા આવી છે. ફરી પ્રયાસ કરતાં પહેલાં ઓછામાં ઓછી ${guidance.retryAfterSeconds} સેકન્ડ રાહ જુઓ.`
+          : 'Gemini ની ક્વોટા અથવા વિનંતી મર્યાદા આવી છે. ફરી પ્રયાસ કરતાં પહેલાં AI Studio માં મર્યાદા તપાસો.';
+      const limited = new ApiError(429, 'AI_RATE_LIMIT', message, { ...diagnostics, ...guidance });
+      Object.assign(limited, guidance);
+      throw limited;
     }
-    throw new ApiError(502, 'AI_PROVIDER_ERROR', 'AI વિશ્લેષણ પૂરું થઈ શક્યું નથી. ફરી પ્રયાસ કરો.');
+    if ([400, 401, 403, 404].includes(status)) throw new ApiError(503, 'AI_CONFIGURATION', 'AI સેટિંગમાં સમસ્યા છે. પછીથી પ્રયાસ કરો.', diagnostics);
+    if (networkCode && !['ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'].includes(networkCode)) {
+      throw new ApiError(503, 'AI_NETWORK_ERROR', 'AI સેવા સાથે જોડાણ થઈ શક્યું નથી. ફરી પ્રયાસ કરો.', diagnostics);
+    }
+    if (status === 408 || status === 504 || ['AbortError', 'TimeoutError'].includes(error?.name) || abortSignal.aborted || ['ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'].includes(networkCode)) {
+      throw new ApiError(504, 'AI_UNAVAILABLE', 'AI સુધી પહોંચી શકાયું નથી અથવા સમય પૂરો થયો. ફરી પ્રયાસ કરો.', diagnostics);
+    }
+    throw new ApiError(502, 'AI_PROVIDER_ERROR', 'AI વિશ્લેષણ પૂરું થઈ શક્યું નથી. ફરી પ્રયાસ કરો.', diagnostics);
   }
   try {
     const candidate = response?.candidates?.[0];
@@ -101,9 +130,13 @@ export async function analyzeWithGemini(image, { apiKey, model, fetchImpl, signa
     if (!text || Buffer.byteLength(text, 'utf8') > 100_000) throw new Error('Invalid response size');
     const parsed = JSON.parse(text);
     const validated = validateAnalysis(language === 'en' ? renameAnalysis(parsed, 'gu') : parsed);
+    for (const text of [validated.explanation_gu, validated.uncertainty.reason_gu, ...validated.visible_symptoms_gu, ...validated.possibilities.map(item => item.evidence_gu)]) requireOutputLanguage(text, language);
+    onMetadata({modelVersion:typeof response.modelVersion==='string' && /^[A-Za-z0-9._:/-]{1,120}$/.test(response.modelVersion)?response.modelVersion:null});
     return language === 'en' ? renameAnalysis(validated, 'en') : validated;
   } catch (error) {
-    if (error instanceof ApiError) throw error;
-    throw new ApiError(502, 'INVALID_MODEL_RESPONSE', 'AI નો જવાબ અધૂરો છે. સ્પષ્ટ ફોટા સાથે ફરી પ્રયાસ કરો.');
+    const reason = response?.candidates?.[0]?.finishReason;
+    const diagnostics = { stage: 'response_validation', geminiMs: Math.round(performance.now() - started), finishReason: ['STOP', 'MAX_TOKENS', 'SAFETY', 'RECITATION', 'OTHER', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII', 'IMAGE_SAFETY'].includes(reason) ? reason : 'UNKNOWN' };
+    if (error instanceof ApiError) { error.diagnostics = diagnostics; throw error; }
+    throw new ApiError(502, 'INVALID_MODEL_RESPONSE', 'AI નો જવાબ અધૂરો છે. સ્પષ્ટ ફોટા સાથે ફરી પ્રયાસ કરો.', diagnostics);
   }
 }

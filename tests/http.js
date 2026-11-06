@@ -2,7 +2,7 @@ import { Readable, Writable } from 'node:stream';
 import { finished } from 'node:stream/promises';
 
 export async function callHandler(app, { path = '/api/analyze', method = 'POST', body, headers = {} } = {}) {
-  const req = Readable.from(method === 'POST' ? [Buffer.from(typeof body === 'string' ? body : JSON.stringify(body))] : []);
+  const req = Readable.from(!['GET','HEAD'].includes(method) && body !== undefined ? [Buffer.from(typeof body === 'string' ? body : JSON.stringify(body))] : []);
   req.method = method; req.url = path;
   req.headers = { host: '127.0.0.1:3001', 'content-type': 'application/json', origin: 'http://127.0.0.1:5173', ...headers };
   req.socket = { remoteAddress: '127.0.0.1' };

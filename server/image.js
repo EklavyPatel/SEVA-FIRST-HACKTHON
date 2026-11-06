@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import { ApiError } from './errors.js';
 
 export const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
@@ -43,4 +44,19 @@ export function validateImage(input) {
     throw new ApiError(400, 'INVALID_IMAGE', 'સ્પષ્ટ ફોટો પસંદ કરો (ઓછામાં ઓછું 64 × 64 પિક્સેલ).');
   }
   return { base64: bytes.toString('base64'), mimeType: 'image/jpeg', ...size };
+}
+
+// Full decoding precedes every AI call. Re-encoding strips EXIF/GPS and trailing
+// payloads, even when a caller bypasses browser preparation.
+export async function decodeImage(input) {
+  const image = validateImage(input);
+  try {
+    const { data, info } = await sharp(Buffer.from(image.base64, 'base64'), {
+      limitInputPixels: 12_000_000, failOn: 'warning',
+    }).rotate().resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#fff' }).jpeg({ quality: 88 }).timeout({ seconds: 8 })
+      .toBuffer({ resolveWithObject: true });
+    if (info.width < 64 || info.height < 64 || data.length > MAX_IMAGE_BYTES) throw new Error();
+    return { base64: data.toString('base64'), mimeType: 'image/jpeg', width: info.width, height: info.height };
+  } catch { throw new ApiError(400, 'INVALID_IMAGE', 'આ ફોટો વાંચી શકાયો નથી. ફરીથી ફોટો લો.'); }
 }

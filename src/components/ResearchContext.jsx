@@ -1,0 +1,28 @@
+import {useEffect,useRef,useState} from 'react';
+import {MapPin,LoaderCircle} from 'lucide-react';
+import {researchFields,fieldGroups} from '../../shared/research-fields.js';
+import {bilingual} from '../lib/research.js';
+export function ResearchContextForm({language,value,onChange,photoKey}){
+ const t=bilingual(language);const[locating,setLocating]=useState(false),[message,setMessage]=useState('');const generation=useRef(0);
+ useEffect(()=>{setLocating(false);setMessage('');return()=>{generation.current++;};},[photoKey]);
+ function update(key,next){onChange(previous=>({...previous,[key]:next}));}
+ function locate(){
+  if(!value.shareCoordinates||locating)return;
+  if(!navigator.geolocation){setMessage(t('આ બ્રાઉઝરમાં સ્થાન ઉપલબ્ધ નથી. સ્થાન લખી શકો છો.','Device location is unavailable. You can type an area instead.'));return;}
+  const id=++generation.current;setLocating(true);setMessage('');
+  navigator.geolocation.getCurrentPosition(position=>{if(id!==generation.current)return;
+   onChange(previous=>previous.shareCoordinates?{...previous,coordinates:{latitude:Math.round(position.coords.latitude*100)/100,longitude:Math.round(position.coords.longitude*100)/100}}:previous);setLocating(false);setMessage(t('અંદાજિત સ્થાન ઉમેરાયું. મોકલતાં પહેલાં તપાસો.','Approximate location added. Check it before submitting.'));
+  },()=>{if(id!==generation.current)return;setLocating(false);setMessage(t('સ્થાન મળ્યું નથી અથવા પરવાનગી આપી નથી. તમે સ્થાન લખી શકો છો અથવા છોડો.','Location was unavailable or permission was declined. Type an area or leave it blank.'));},{enableHighAccuracy:false,timeout:10000,maximumAge:0});
+ }
+ return <div className="research-context-form"><p className="research-help">{t('નીચેના બધા સવાલ વૈકલ્પિક છે. ખબર ન હોય તો ખાલી છોડો; કોઈ અંદાજ લખવો જરૂરી નથી.','Every question below is optional. Leave anything unknown blank; you do not need to guess.')}</p>
+ {fieldGroups.map(([group,en,gu])=><details className="context-group" key={group}><summary>{t(gu,en)} <span>{t('વૈકલ્પિક','Optional')}</span></summary><div className="context-fields">
+ {researchFields.filter(f=>f.group===group).map(f=><label key={f.key}>{t(f.gu,f.en)} <small>{t('(વૈકલ્પિક)','(optional)')}</small>{f.options?<select aria-label={t(f.gu,f.en)} value={value[f.key]||''} onChange={e=>update(f.key,e.target.value)}><option value="">{t('જવાબ આપેલો નથી','Not provided')}</option>{f.options.map(([key,en,gu])=><option key={key} value={key}>{t(gu,en)}</option>)}</select>:f.multiline?<textarea value={value[f.key]??''} maxLength={f.max} onChange={e=>update(f.key,e.target.value)} rows={3}/>:<input type={f.type||'text'} value={value[f.key]??''} min={f.type==='number'?f.min:undefined} max={f.type==='number'?f.max:undefined} step={f.key==='affectedPercent'?'any':f.type==='number'?1:undefined} maxLength={f.type?undefined:f.max} autoComplete="off" onChange={e=>update(f.key,e.target.value)}/>}</label>)}
+ {group==='location'&&<div className="optional-location"><label className="research-checkbox"><input type="checkbox" checked={Boolean(value.shareCoordinates)} onChange={e=>{generation.current++;setLocating(false);setMessage('');const checked=e.target.checked;onChange(previous=>({...previous,shareCoordinates:checked,coordinates:undefined}));}}/><span>{t('અંદાજિત ઉપકરણ સ્થાન આ ફોટા સાથે સાચવવા અને અધિકૃત સંશોધકો તથા તેમની નિકાસમાં સામેલ કરવા પસંદ કરું છું.','I choose to save approximate device coordinates with this photo and include them for authorized researchers and their exports.')}</span></label><button className="button button-outline" type="button" onClick={locate} disabled={!value.shareCoordinates||locating}>{locating?<LoaderCircle className="animate-spin" size={15}/>:<MapPin size={15}/>} {t('અંદાજિત ઉપકરણ સ્થાન ઉમેરો','Add approximate device location')}</button>{value.coordinates&&<p className="location-preview">{value.coordinates.latitude.toFixed(2)}, {value.coordinates.longitude.toFixed(2)} <button type="button" onClick={()=>{generation.current++;setLocating(false);onChange(previous=>({...previous,coordinates:undefined,shareCoordinates:false}));setMessage('');}}>{t('દૂર કરો','Remove')}</button></p>}<p className="research-help">{t('ઉપકરણનું હાલનું અંદાજિત સ્થાન છે, ફોટો જ્યાં લીધો હતો તેનું પુરાવું નથી. ફોટો બીજી જગ્યાએ લીધો હોય તો સ્થાન લખો. સ્થાન માત્ર બટન દબાવ્યા પછી પૂછાય છે.','This is your device’s approximate current location, not proof of where the photo was taken. If the photo was taken elsewhere, type that area instead. Location is requested only after you press the button.')}</p>{message&&<p className="research-help" role="status">{message}</p>}</div>}
+ </div></details>)}
+ </div>;
+}
+export function ResearchContextView({context={},language}){
+ const t=bilingual(language);const fields=researchFields.filter(f=>context[f.key]!==undefined&&context[f.key]!==''&&context[f.key]!==null);
+ if(!fields.length&&!context.coordinates)return null;
+ return <section className="research-context-view"><h3>{t('ખેડૂતે આપેલી વૈકલ્પિક માહિતી','Optional farmer-reported context')}</h3><dl>{fields.map(f=><div key={f.key}><dt>{t(f.gu,f.en)}</dt><dd>{f.options?t(...(()=>{const o=f.options.find(o=>o[0]===context[f.key]);return o?[o[2],o[1]]:[String(context[f.key]),String(context[f.key])];})()):String(context[f.key])}</dd></div>)}{context.coordinates&&<div><dt>{t('અંદાજિત ઉપકરણ સ્થાન (સ્વૈચ્છિક)','Approximate device location (opt-in)')}</dt><dd>{context.coordinates.latitude.toFixed(2)}, {context.coordinates.longitude.toFixed(2)}</dd></div>}</dl><p className="research-help">{t('ખેડૂતની નોંધો છે; ઉપકરણ સ્થાન ફોટાના મૂળ સ્થાનની ખાતરી આપતું નથી.','These are farmer-reported details. Device location does not verify the original photo location.')}</p></section>;
+}

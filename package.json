@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "engines": { "node": ">=22.13" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:client": "vite --host 127.0.0.1",
@@ -12,9 +14,23 @@
     "test:gemini": "node scripts/test-gemini.mjs",
     "build": "vite build",
     "start": "node server/index.js",
-    "test": "node tests/server.test.js",
+    "test": "node --test tests/server.test.js tests/research.test.mjs tests/features.test.mjs tests/security.test.mjs tests/accounts.test.mjs tests/account-config.test.mjs tests/backend-probe.test.mjs tests/account-rate.test.mjs tests/accounts-ui.test.mjs tests/supabase-photos.test.mjs tests/backend-runtime.test.mjs tests/research-readiness.test.mjs tests/bootstrap-admin.test.mjs tests/navigation.test.mjs tests/account-links.test.mjs tests/supabase-community.test.mjs",
     "test:ui": "node tests/ui.test.mjs",
-    "test:e2e": "node tests/browser.mjs"
+    "test:e2e": "node tests/browser.mjs",
+    "research:users": "node scripts/research-users.mjs",
+    "test:research": "node --test tests/research.test.mjs",
+    "setup:backend": "npm --prefix server ci --no-audit --no-fund",
+    "test:security": "node --test tests/security.test.mjs",
+    "test:accounts": "node tests/accounts.test.mjs",
+    "check:backend": "node scripts/check-backend.mjs",
+    "test:auth:live": "node scripts/test-auth-live.mjs",
+    "test:supabase:live": "node scripts/verify-supabase-http.mjs --fixtures",
+    "photos:reconcile": "node scripts/reconcile-photos.mjs",
+    "test:photos:sql": "node scripts/test-photos-sql.mjs",
+    "backend:smoke": "node scripts/smoke-backend.mjs",
+    "check:research": "node scripts/check-research.mjs",
+    "setup:admin": "node scripts/bootstrap-admin.mjs",
+    "test:approval": "node --test tests/accounts.test.mjs tests/bootstrap-admin.test.mjs tests/supabase-photos.test.mjs"
   },
   "dependencies": {
     "react": "19.3.1",

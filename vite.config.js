@@ -8,7 +8,9 @@ export default defineConfig({
   envDir: false,
   server: {
     host: '127.0.0.1', port: 5173, strictPort: true,
-    fs: { deny: ['**/.env', '**/.env.*', '**/*.env', '**/*.{crt,pem}', '**/.git/**'] },
+    // Allow the development preview hostname; keep Vite's host checks enabled.
+    allowedHosts: ['terminal.local'],
+    fs: { deny: ['**/.env', '**/.env.*', '**/*.env', '**/*.env.*', '**/*.{crt,pem}', '**/.git/**', '**/data/**', '**/*.sqlite*', '**/*.zip', '**/*.log', '**/server/**', '**/scripts/**', '**/artifacts/**', '**/supabase/**'] },
     proxy: { '/api': 'http://127.0.0.1:3001' },
   },
 });

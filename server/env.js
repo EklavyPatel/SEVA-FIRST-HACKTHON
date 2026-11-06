@@ -6,6 +6,8 @@ import { parseEnv } from 'node:util';
 // Existing nonempty process environment > api.env > .env defaults.
 export function loadBackendEnvironment({ cwd = process.cwd(), env = process.env } = {}) {
   const loadedFiles = [];
+  const names = ['GEMINI_API_KEY','GEMINI_MODEL','SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','SUPABASE_SERVICE_ROLE_KEY','APP_ORIGIN','SECURE_COOKIES','NODE_ENV','HOST','PORT','DATA_DIRECTORY','PUBLIC_RESEARCH_ACCESS'];
+  const configSources = Object.fromEntries(names.filter(name => env[name]?.trim()).map(name => [name, 'process']));
   for (const file of ['api.env', '.env']) {
     let values;
     try { values = parseEnv(readFileSync(resolve(cwd, file), 'utf8')); }
@@ -16,8 +18,8 @@ export function loadBackendEnvironment({ cwd = process.cwd(), env = process.env 
     }
     loadedFiles.push(file);
     for (const [key, value] of Object.entries(values)) {
-      if ((!env[key] || !env[key].trim()) && value.trim()) env[key] = value;
+      if ((!env[key] || !env[key].trim()) && value.trim()) { env[key] = value; if (names.includes(key)) configSources[key] = file; }
     }
   }
-  return { loadedFiles, keyConfigured: Boolean(env.GEMINI_API_KEY?.trim()) };
+  return { loadedFiles, configSources, keyConfigured: Boolean(env.GEMINI_API_KEY?.trim()) };
 }

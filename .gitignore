@@ -7,4 +7,14 @@ api.env
 !.env.example
 .sites-runtime/
 artifacts/
+data/
+*.sqlite
+*.sqlite-*
 *.log
+# Local browser traces, source archives and environment backups may contain private data.
+.playwright-mcp/
+*.zip
+*.env.*
+!.env.example
+!api.env.example
+!deploy.env.example

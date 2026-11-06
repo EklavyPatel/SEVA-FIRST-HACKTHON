@@ -1,11 +1,17 @@
+import Landing from './components/Landing.jsx';
+import {rememberDestination,routeAccess} from './lib/account-navigation.js';
+import AccountPage, { accountRequest } from './components/Account.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowRight, ArrowUpRight, Camera, Check, CheckCircle2, ChevronRight, CircleHelp,
   FileCheck2, FlaskConical, ImagePlus, Leaf, LoaderCircle, LockKeyhole, RefreshCw, ScanLine,
-  ShieldCheck, Sparkles, Sprout, TriangleAlert, Upload, X, Languages } from 'lucide-react';
+  ShieldCheck, Sparkles, Sprout, TriangleAlert, Upload, X, Languages, LayoutDashboard, BookOpen, Download, Printer, Sun, Moon, MoveUpRight, Settings2 } from 'lucide-react';
+import Community, { Followup } from './components/Community.jsx';
 import { prepareImage } from './lib/images.js';
 import { analyzeImage, loadCapabilities } from './lib/api.js';
 import { translator } from './lib/i18n.js';
 import { renameAnalysis } from '../shared/analysis-language.js';
+import { ResearchContribution, ResearchHub, SettingsDialog } from './components/Research.jsx';
+import { readPreference, savePreference } from './lib/research.js';
 
 function CottonMark({ className = '' }) {
   return <svg className={className} viewBox="0 0 64 64" fill="none" aria-hidden="true">
@@ -15,16 +21,7 @@ function CottonMark({ className = '' }) {
   </svg>;
 }
 
-function FieldArt() {
-  return <svg className="field-art" viewBox="0 0 680 200" fill="none" aria-hidden="true">
-    <path d="M-20 175C135 99 303 121 423 170c96 39 168 2 282-40M-20 194C143 123 293 144 419 186M35 199c143-48 251-31 330 4M438 198c95-6 179-31 257-43" stroke="currentColor" strokeWidth="1.3" />
-    <path d="M545 170V55m0 83c-24 0-41-18-43-38 26-1 41 16 43 38Zm0-31c23 0 37-15 40-34-25 0-38 15-40 34Z" fill="currentColor" fillOpacity=".22" stroke="currentColor" strokeWidth="1.3" />
-    <path d="M526 52a14 14 0 0 1 8-19 15 15 0 0 1 24 0 14 14 0 0 1 9 19c0 16-15 23-22 14-10 9-20 0-19-14Z" fill="#eeeee1" stroke="currentColor" strokeWidth="1.3" />
-    <path d="M457 161V99m0 40c-16 0-24-10-25-24 17 0 24 10 25 24Zm0-15c14 0 22-11 23-22-17 0-23 10-23 22Z" fill="currentColor" fillOpacity=".2" stroke="currentColor" />
-  </svg>;
-}
-
-function Result({ result, onRetake, language }) {
+function Result({ result, onRetake, language, image }) {
   const t = translator(language);
   const heading = useRef(null);
   useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [result]);
@@ -32,6 +29,19 @@ function Result({ result, onRetake, language }) {
   const analysis = result.language === 'en' ? renameAnalysis(result.analysis, 'gu') : result.analysis;
   const text = value => mode === 'demo' ? t(value) : value;
   const uncertainty = { low: t('ઓછી'), medium: t('મધ્યમ'), high: t('વધુ') }[analysis.uncertainty.level];
+  function saveReview() {
+    const lines = [t('કપાસમિત્ર') + ' AI', mode === 'demo' ? t('સિમ્યુલેશન — તમારા ફોટાનું AI વિશ્લેષણ થયું નથી.') : t('આ પુષ્ટિ થયેલું નિદાન નથી. ફોટાથી કરેલું અનુમાન ખોટું હોઈ શકે છે. કૃષિ નિષ્ણાતની સમીક્ષા જરૂરી છે.'),
+      ...analysis.possibilities.map(item => `${text(item.name_gu)}: ${text(item.evidence_gu)}`),
+      t('દેખાતા લક્ષણો'), ...analysis.visible_symptoms_gu.map(text), text(analysis.explanation_gu),
+      `${t('અનિશ્ચિતતા:')} ${uncertainty}`, text(analysis.uncertainty.reason_gu),
+      ...result.advisories.map(item => `${item.nameGu}\n${item.symptomsGu}\n${item.preventionGu}\n${item.nextStepsGu}\n${item.source.title}: ${item.source.url}\n${t('સમીક્ષક:')} ${item.reviewedBy}`),
+      t('આગળનું પગલું: તમારા વિસ્તારના કૃષિ નિષ્ણાત સાથે ફોટો અને દેખાતા લક્ષણો શેર કરો.'),
+      ...(mode === 'live' ? [`${t('· મોડેલ:')} ${result.model}`] : []),
+    ];
+    const url = URL.createObjectURL(new Blob([lines.join('\n\n')], { type: 'text/plain;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'kapasmitra-crop-review.txt';
+    document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   return <section id="results" className="result-section page-width" aria-labelledby="result-title" data-testid="results">
     <div className="result-topline"><div><p className="eyebrow"><ScanLine size={15} /> {t("ફોટાનું પ્રાથમિક અવલોકન")}</p>
       <h2 ref={heading} tabIndex={-1} id="result-title">{mode === 'demo' ? t('ડેમો પરિણામ') : t('તમારા ફોટામાં શું દેખાય છે?')}</h2></div>
@@ -39,6 +49,7 @@ function Result({ result, onRetake, language }) {
     </div>
     {mode === 'demo' && <div className="demo-result-note" role="note"><FlaskConical size={21} /><div><strong>{t("સિમ્યુલેશન — તમારા ફોટાનું AI વિશ્લેષણ થયું નથી.")}</strong><p>{t("આ માત્ર એપ્લિકેશનનું ઉદાહરણ છે. પાક અંગે નિર્ણય લેવા આ પરિણામ વાપરશો નહીં.")}</p></div></div>}
     {mode === 'live' && (result.language || 'gu') !== language && <p className="language-result-note" role="note">{t('આ પરિણામ અગાઉની ભાષામાં છે. પસંદ કરેલી ભાષામાં નવું વિશ્લેષણ કરવા ફરી પ્રયાસ કરો.')}</p>}
+    {image && <figure className="review-photo"><img src={image.preview} alt={t('વિશ્લેષણ માટે પસંદ કરેલો પાકનો ફોટો')} /><figcaption><span>{image.illustration ? t('નમૂનાનું ચિત્ર') : image.name}</span><strong>{mode === 'demo' ? t('ડેમો મોડ · સિમ્યુલેશન') : t('લાઇવ AI વિશ્લેષણ')}</strong></figcaption></figure>}
     <div className="result-grid">
       <article className="result-card">
         <div className="card-heading"><span className="icon-box"><Leaf size={21} /></span><h3>{t("સંભવિત ઓળખ")}</h3><span className="small-badge">{mode === 'demo' ? t('નમૂનો') : t('AI અનુમાન')}</span></div>
@@ -50,7 +61,7 @@ function Result({ result, onRetake, language }) {
       <article className="result-card explanation-card">
         <div className="card-heading"><span className="icon-box"><Sparkles size={21} /></span><h3>{t("સરળ ગુજરાતીમાં સમજ")}</h3></div>
         <p className="explanation-text" lang={mode === 'demo' ? language : result.language || 'gu'}>{text(analysis.explanation_gu)}</p>
-        <div className="uncertainty"><TriangleAlert size={19} /><div><h4>{t("અનિશ્ચિતતા:")} {uncertainty}</h4><p lang={mode === 'demo' ? language : result.language || 'gu'}>{text(analysis.uncertainty.reason_gu)}</p></div></div>
+        <div className="uncertainty"><span className="certainty-ring" aria-label={t("આંકડાકીય વિશ્વાસ માપવામાં આવ્યો નથી")}>—</span><div><h4>{t("અનિશ્ચિતતા:")} {uncertainty}</h4><p lang={mode === 'demo' ? language : result.language || 'gu'}>{text(analysis.uncertainty.reason_gu)}</p></div></div>
         <p className="fine-print">{t("આ પુષ્ટિ થયેલું નિદાન નથી. ફોટાથી કરેલું અનુમાન ખોટું હોઈ શકે છે. કૃષિ નિષ્ણાતની સમીક્ષા જરૂરી છે.")}</p>
       </article>
     </div>
@@ -64,11 +75,33 @@ function Result({ result, onRetake, language }) {
         </div>) : <><p>{t("આ પરિણામ માટે મંજૂર અને સમીક્ષિત માર્ગદર્શન હજી ઉપલબ્ધ નથી. તેથી કોઈ ઉપચાર કે માત્રા બતાવવામાં આવતી નથી.")}</p><p className="expert-next-step">{t("આગળનું પગલું: તમારા વિસ્તારના કૃષિ નિષ્ણાત સાથે ફોટો અને દેખાતા લક્ષણો શેર કરો.")}</p></>}
       </div>
     </article>
-    <p className="result-meta"><LockKeyhole size={13} /> {t("રિપોર્ટ કે ફોટો કાયમી સંગ્રહિત નથી.")}{mode === 'live' && <> {t("· મોડેલ:")} <span lang="en">{result.model}</span></>}</p>
+    <div className="review-actions"><button type="button" className="button button-outline" onClick={saveReview}><Download size={16} />{t('ટેક્સ્ટ સાચવો')}</button><button type="button" className="button button-primary" onClick={() => window.print()}><Printer size={16} />{t('પ્રિન્ટ / PDF સાચવો')}</button></div>
+    <section className="next-step-plan"><h3>{language==='en'?'What to do next':'હવે શું કરવું?'}</h3><ol>{(language==='en' ? (analysis.image_assessment==='cotton' ? ['Inspect the affected part and leaf undersides in daylight.','Take a close-up and a whole-plant photo; note when symptoms started and whether they are spreading.','Share these observations with a local agricultural expert before choosing a treatment.'] : ['Retake a clear daylight photo of the affected cotton plant.','Include both the affected part and the whole plant so an expert can assess the context.']) : (analysis.image_assessment==='cotton' ? ['દિવસના પ્રકાશમાં અસરગ્રસ્ત ભાગ અને પાનની નીચેની બાજુ તપાસો.','નજીકનો અને આખા છોડનો ફોટો લો; લક્ષણો ક્યારથી છે અને ફેલાય છે કે નહીં તેની નોંધ લો.','ઉપચાર પસંદ કરતાં પહેલાં આ વિગતો સ્થાનિક કૃષિ નિષ્ણાત સાથે શેર કરો.'] : ['દિવસના પ્રકાશમાં કપાસના અસરગ્રસ્ત છોડનો સ્પષ્ટ ફોટો ફરી લો.','અસરગ્રસ્ત ભાગ અને આખા છોડના ફોટા લો જેથી નિષ્ણાત સંદર્ભ સમજી શકે.'])).map(step=><li key={step}>{step}</li>)}</ol><p className="research-help">{language==='en'?'These are observation and escalation steps, not a disease-specific treatment plan.':'આ અવલોકન અને નિષ્ણાતની મદદ માટેનાં પગલાં છે, રોગ-વિશેષ ઉપચાર નથી.'}</p></section>
+    <Followup image={image} result={result} language={language} />
+    <p className="result-meta"><LockKeyhole size={13} /> {t("રિપોર્ટ કે સંશોધન ફક્ત સંમતિથી.")}{mode === 'live' && <> {t("· મોડેલ:")} <span lang="en">{result.model}</span></>}</p>
   </section>;
 }
 
-export default function App() {
+function ReviewPlaceholder({ language, analyzing, mode, hasImage }) {
+  const t = translator(language);
+  return <div className="review-placeholder">
+    <div className={`placeholder-hero ${analyzing ? 'is-scanning' : ''}`}>
+      <div className="scan-grid" aria-hidden="true" />
+      <div className="scan-heading"><span><span className="status-dot" />{t('પાકનું અવલોકન સ્ટુડિયો')}</span><span>01 / 03</span></div>
+      <div className="scan-copy"><p className="eyebrow">{t('કુદરત મળે સમજને.')}</p><h2>{t('થોડી વધુ સમજ.')}<br /><em>{t('આગળનું સ્પષ્ટ પગલું.')}</em></h2><p>{t('ડાબી બાજુ ફોટો ઉમેરો. સંભવિત ઓળખ, દેખાતા લક્ષણો અને અનિશ્ચિતતા અહીં સાથે જુઓ.')}</p><a className="scan-link" href="#analyze" onClick={event => { event.preventDefault(); document.getElementById('analyze')?.scrollIntoView({ block: 'start' }); document.getElementById('crop-photo')?.focus({ preventScroll: true }); }}>{hasImage ? t('તમારો ફોટો તૈયાર છે') : t('તમારા ફોટાથી શરૂઆત કરો')}<MoveUpRight size={17} /></a></div>
+      <div className="leaf-study" aria-hidden="true"><div className="leaf-orbit orbit-one" /><div className="leaf-orbit orbit-two" /><img src="/cottoncare/leaf-study.svg" alt="" /><span className="leaf-marker marker-one" /><span className="leaf-marker marker-two" /><span className="leaf-label"><Leaf size={12} /> GOSSYPIUM <span>·</span> {t('ચિત્ર')}</span><span className="scan-corner corner-tl" /><span className="scan-corner corner-tr" /><span className="scan-corner corner-bl" /><span className="scan-corner corner-br" /></div>
+      <div className="scan-caption"><span><ScanLine size={14} />{t('એક ફોટો. એક સરળ સમજૂતી.')}</span><span>{t('સુશોભન ચિત્ર · વિશ્લેષણ નથી')}</span></div>
+    </div>
+    {analyzing ? <div className="workspace-processing" role="status"><LoaderCircle size={28} className="animate-spin" /><h3>{mode === 'demo' ? t('ડેમો તૈયાર થાય છે…') : t('વિશ્લેષણ થઈ રહ્યું છે…')}</h3><p>{mode === 'demo' ? t('માત્ર નમૂનાનું પરિણામ તૈયાર થાય છે.') : t('દેખાતા લક્ષણો અને અનિશ્ચિતતાનું અવલોકન થાય છે.')}</p></div> : <div className="preview-sections">{[
+      [ImagePlus, 'ફોટો અને સંભવિત ઓળખ', 'તમારા ફોટામાં દેખાતા લક્ષણોનું પ્રાથમિક અવલોકન.'],
+      [CircleHelp, 'સ્પષ્ટ અનિશ્ચિતતા', 'આંકડાકીય વિશ્વાસ માપવામાં આવ્યો નથી'],
+      [Sprout, 'જાણકારી સાથે આગળ વધો', 'અંતિમ નિર્ણય માટે નિષ્ણાત તમારી સાથે.'],
+    ].map(([Icon, title, description], i) => <article key={title}><span>0{i + 1}</span><Icon size={22} /><h3>{t(title)}</h3><p>{t(description)}</p></article>)}</div>}
+    <div className="quick-photo-tip"><Sun size={20} /><p><strong>{t('સ્પષ્ટ ફોટો લો')}</strong><br />{t('દિવસના કુદરતી પ્રકાશમાં અસરગ્રસ્ત ભાગનો નજીકથી ફોટો લો.')}</p><a href="#/guide">{t('ફોટો માર્ગદર્શિકા')} <ArrowUpRight size={14} /></a></div>
+  </div>;
+}
+
+export default function App({emailLink} = {}) {
   const [language, setLanguage] = useState(() => {
     try { return window.localStorage.getItem('kapasmitra-language') === 'en' ? 'en' : 'gu'; }
     catch { return 'gu'; }
@@ -90,8 +123,44 @@ export default function App() {
   const [consent, setConsent] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [theme, setTheme] = useState(() => readPreference('kapasmitra-theme', 'light') === 'dark' ? 'dark' : 'light');
+  const [reducedMotion, setReducedMotion] = useState(() => readPreference('kapasmitra-reduced-motion', 'false') === 'true');
+  const [researchRevision, setResearchRevision] = useState(0);
+  const resolvePage = () => ({home:'home','request-research':'request-research',admin:'admin','my-submissions':'my-submissions','forgot-password':'forgot-password','reset-password':'reset-password',confirm:'confirm',crop:'crop',guide:'guide',analyze:'crop',main:'crop',research:'research','how-it-works':'guide',guidance:'guide',about:'about',settings:'settings',community:'community',account:'account',login:'login',signup:'signup'}[window.location.hash.replace(/^#\/?/,'').split('?')[0]] || 'home');
+  const [page, setPage] = useState(resolvePage);
+  const [accountUser, setAccountUser] = useState(null);
+  const [accountsConfigured, setAccountsConfigured] = useState(null);
+  const [accountStatusError, setAccountStatusError] = useState(null);
+  const [accountConfiguration, setAccountConfiguration] = useState({});
+  async function refreshAccount(throwOnError = false) {
+    try {
+      const data = await accountRequest('/me'); setAccountUser(data.user); setAccountsConfigured(data.configured);
+      setAccountConfiguration(data); setAccountStatusError(null);
+      setResearchRevision(value => value + 1);
+    } catch (error) {
+      setAccountUser(null); if (typeof error.configured === 'boolean') setAccountsConfigured(error.configured);
+      setAccountStatusError(error);
+      if (throwOnError === true) throw error;
+    }
+  }
+  useEffect(() => { refreshAccount(); window.addEventListener('km-account-change', refreshAccount); return () => window.removeEventListener('km-account-change', refreshAccount); }, []);
+  const [activeSection, setActiveSection] = useState('analyze');
+  useEffect(() => {const change=()=>{setPage(resolvePage());document.documentElement.scrollTop=0;};window.addEventListener('hashchange',change);return()=>window.removeEventListener('hashchange',change);},[]);
+  useEffect(()=>{
+    if(accountsConfigured===null)return;
+    const destination=routeAccess(page,accountUser);
+    if(destination!==page){if(destination==='login')rememberDestination(page);window.location.hash='/'+destination;setPage(destination);}
+  },[page,accountUser,accountsConfigured]);
+  useEffect(()=>{
+    const expired=()=>{rememberDestination(page);setAccountUser(null);window.location.hash='/login';setPage('login');};
+    const focus=()=>refreshAccount();
+    window.addEventListener('km-session-expired',expired);window.addEventListener('focus',focus);
+    return()=>{window.removeEventListener('km-session-expired',expired);window.removeEventListener('focus',focus);};
+  },[page]);
   const fileInput = useRef(null); const cameraInput = useRef(null);
   const activeRequest = useRef(null); const selection = useRef(0);
+
+  useEffect(()=>{activeRequest.current?.abort();selection.current++;setImage(null);setResult(null);setAnalyzing(false);setPreparing(false);setError('');setConsent(false);},[accountUser?.id]);
 
   async function connect() {
     setConnectionError(false);
@@ -101,6 +170,26 @@ export default function App() {
     } catch { setConnectionError(true); }
   }
   useEffect(() => { connect(); return () => activeRequest.current?.abort(); }, []);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    savePreference('kapasmitra-theme', theme);
+    return () => { delete document.documentElement.dataset.theme; };
+  }, [theme]);
+  useEffect(() => {
+    document.documentElement.dataset.reducedMotion = String(reducedMotion);
+    savePreference('kapasmitra-reduced-motion', String(reducedMotion));
+    return () => { delete document.documentElement.dataset.reducedMotion; };
+  }, [reducedMotion]);
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) if (entry.isIntersecting) setActiveSection(entry.target.id);
+    }, { rootMargin: '-12% 0px -55% 0px', threshold: 0 });
+    for (const id of ['analyze', 'research', 'how-it-works', 'guidance', 'about']) {
+      const section = document.getElementById(id); if (section) observer.observe(section);
+    }
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     if (!analyzing) { setElapsed(0); return; }
     const timer = setInterval(() => setElapsed(value => value + 1), 1000);
@@ -139,7 +228,7 @@ export default function App() {
     const controller = new AbortController(); activeRequest.current = controller;
     setAnalyzing(true); setError(''); setResult(null);
     try {
-      const data = await analyzeImage(image, mode, controller.signal, language);
+      const data = await analyzeImage(image, mode, controller.signal, language, consent);
       if (!controller.signal.aborted) {
         setResult(data);
         setTimeout(() => document.getElementById('results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
@@ -149,28 +238,26 @@ export default function App() {
   }
   const available = capabilities && (mode === 'demo' ? capabilities.demoAvailable : capabilities.liveAvailable);
 
-  return <>
-    <div className="utility-bar"><div className="page-width flex items-center justify-between gap-3"><span><Sprout size={13} /> {t("કપાસની કાળજી. ખેડૂતની ભાષામાં.")}</span><span className="utility-right"><span className="status-dot" /> {t("ખેડૂત માટેનું પ્રાથમિક AI સાધન")}</span></div></div>
-    <header className="site-header"><div className="page-width header-inner">
-      <a className="brand" href="#" aria-label={t("કપાસમિત્ર AI મુખ્ય પાનું")}><span className="brand-icon"><CottonMark /></span><span><strong>{t("કપાસમિત્ર")} <span lang="en">AI</span></strong><small lang="en">A LITTLE CLARITY. A HEALTHIER CROP.</small></span></a>
-      <nav aria-label={t("મુખ્ય નેવિગેશન")}><a href="#how-it-works">{t("કેવી રીતે કામ કરે છે")}</a><a href="#guidance">{t("કૃષિ માર્ગદર્શન")}</a></nav>
-      <div className="header-actions"><label className="language-switch"><Languages size={17} aria-hidden="true" />
-        <select aria-label="Language / ભાષા" value={language} onChange={event => {
-          activeRequest.current?.abort(); setAnalyzing(false); setLanguage(event.target.value);
-        }}><option value="gu" lang="gu">ગુજરાતી</option><option value="en" lang="en">English</option></select>
-      </label><a href="#analyze" className="header-cta">{t("ફોટો તપાસો")} <ArrowUpRight size={17} /></a></div>
-    </div></header>
-    <main>
+  return <div className={'cotton-workspace'+(['home','login','signup','forgot-password','reset-password','confirm'].includes(page)?' public-shell':'')} data-page={page}>
+    <a className="skip-link" href="#main" onClick={event => { event.preventDefault(); document.getElementById('main')?.focus(); }}>{t('મુખ્ય સામગ્રી પર જાઓ')}</a>
+    <aside className="workspace-sidebar">
+      <a className="workspace-brand" href="#/home"><span className="workspace-brand-icon"><CottonMark /></span><span>{t('કપાસમિત્ર')}<small>AI</small><b>.</b></span></a>
+      <p className="sidebar-caption">ROOTED IN CARE. GROWN WITH AI.</p>
+      <p className="nav-caption">{t('તમારું કાર્યસ્થળ')}</p>
+      <nav aria-label={t('મુખ્ય નેવિગેશન')}>{[
+        ['home', Leaf, language==='en'?'Home':'મુખ્ય પાનું'], ['crop', LayoutDashboard, 'પાકની તપાસ'], ...(accountUser&&['admin','researcher','expert'].includes(accountUser.role)?[['research', FlaskConical, language==='en'?'Research dashboard':'સંશોધન ડેશબોર્ડ']]:[]), ['community', Sprout, 'સમુદાય'], ['guide', BookOpen, 'કૃષિ માર્ગદર્શન'], ['about', CircleHelp, 'આ એપ વિશે'], ...(accountUser?[["account",LockKeyhole,language==='en'?'My account':'મારું ખાતું'],['my-submissions',ImagePlus,language==='en'?'My submissions':'મારા ફોટા'],...(!['admin','researcher','expert'].includes(accountUser.role)?[['request-research',FileCheck2,language==='en'?'Request research access':'સંશોધન પ્રવેશ માગો']]:[]),...(accountUser.role==='admin'?[['admin',ShieldCheck,language==='en'?'Admin dashboard':'વ્યવસ્થાપક ડેશબોર્ડ']]:[])]:[]),
+      ].map(([id, Icon, label], i) => <a key={id} className={page === id ? 'active' : ''} aria-current={page === id ? 'page' : undefined} href={`#/${id}`} onClick={() => setPage(id)}><Icon size={18} />{t(label)}<span className="nav-index">0{i + 1}</span></a>)}</nav>
+      <button type="button" className="sidebar-settings" onClick={() => {window.location.hash="/settings";setPage("settings");}}><Settings2 size={17} />{t('સેટિંગ્સ')}</button>
+      <div className="sidebar-bottom"><div className="sidebar-plant" aria-hidden="true"><Sprout strokeWidth={.8} /></div><span className="sidebar-card-label"><Leaf size={13} />{t('ખેતર માટે બનાવેલું')}</span><h2>{t('કાળજીથી શરૂઆત.')}</h2><p>{t('ફોટાથી પ્રાથમિક ઓળખ')}<br />{t('અંતિમ નિર્ણય માટે નિષ્ણાત તમારી સાથે.')}</p><span className="sidebar-footnote"><span className="status-dot" />{t('ખેડૂત માટેનું પ્રાથમિક AI સાધન')}</span></div>
+    </aside>
+    <div className="workspace-body">
+    <header className="workspace-topbar">{['home','login','signup','forgot-password','reset-password','confirm'].includes(page)&&<a className="public-brand" href="#/home"><span><CottonMark/></span><strong>{language==='en'?'KapasMitra':'કપાસમિત્ર'}<small>AI</small></strong></a>}<div className="breadcrumb"><span className="topbar-mark"><Sprout size={16} /></span>{t('તમારા પાકનો સાથી')}<span>/</span><strong>{t({home:'મુખ્ય પાનું','request-research':'સંશોધન પ્રવેશ','my-submissions':'મારા ફોટા',admin:'વ્યવસ્થાપક','forgot-password':'પાસવર્ડ','reset-password':'પાસવર્ડ',confirm:'ઇમેઇલ',crop:'પાકની તપાસ',research:'સંશોધન',community:'સમુદાય',guide:'કૃષિ માર્ગદર્શન',about:'આ એપ વિશે',settings:'સેટિંગ્સ',account:'ખાતું',login:'પ્રવેશ',signup:'ખાતું બનાવો'}[page])}</strong></div><div className="header-actions"><div className="account-actions"><a className="public-home-link" href="#/home">{language==='en'?'Home':'મુખ્ય પાનું'}</a>{accountUser ? <a href="#/account">{language === 'en' ? (accountUser.role === 'admin' ? 'Admin' : 'Account') : (accountUser.role === 'admin' ? 'વ્યવસ્થાપક' : 'ખાતું')}</a> : <><a href="#/login">{language === 'en' ? 'Log in' : 'પ્રવેશ'}</a><a href="#/signup">{language === 'en' ? 'Sign up' : 'ખાતું બનાવો'}</a></>}</div><button className="theme-switch" type="button" aria-label={theme === 'light' ? t('ડાર્ક થીમ પસંદ કરો') : t('લાઇટ થીમ પસંદ કરો')} onClick={() => setTheme(value => value === 'light' ? 'dark' : 'light')}>{theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}</button><label className="language-switch"><Languages size={16} aria-hidden="true" /><select aria-label="Language / ભાષા" value={language} onChange={event => {activeRequest.current?.abort(); setAnalyzing(false); setLanguage(event.target.value);}}><option value="gu" lang="gu">ગુજરાતી</option><option value="en" lang="en">English</option></select></label><span className="workspace-private"><LockKeyhole size={13} />{t('સંશોધન ફક્ત સંમતિથી')}</span></div></header>
+    <main id="main" tabIndex={-1}>{['account','login','signup','request-research','admin','forgot-password','reset-password','confirm'].includes(page) && <AccountPage initialEmailLink={emailLink?.page===page?emailLink:undefined} key={page+':'+(accountUser?.id||'guest')} language={language} page={page} user={accountUser} configured={accountsConfigured} onChanged={() => refreshAccount(true)} statusError={accountStatusError} onRetry={() => refreshAccount()} configurationIssue={accountConfiguration.configurationIssue} missingConfiguration={accountConfiguration.missingConfiguration} />}{page==='home'&&<Landing language={language} user={accountUser}/>}{accountUser&&page==='crop'&&<div className="route-page">
+      <div className="workspace-heading"><div><p className="eyebrow"><span className="eyebrow-line" />{t('કપાસના ખેડૂતનો ડિજિટલ સાથી')}</p><h1>{t('કપાસની ચિંતા?')} <span>{t('ચાલો, સાથે સમજીએ.')}</span></h1><p>{t('ફોટો ડાબી બાજુ. સંપૂર્ણ અવલોકન જમણી બાજુ.')}</p></div><div className="workspace-status"><span className="studio-edition">CROP STUDIO <span> / </span> 01</span><span className={`workspace-mode ${mode}`}><span className="status-dot" />{!capabilities ? t('જોડાણ તપાસી રહ્યા છીએ') : mode === 'demo' ? t('ડેમો મોડ · સિમ્યુલેશન') : t('લાઇવ AI વિશ્લેષણ')}</span></div></div>
+      <div className="workspace-notice"><ShieldCheck size={18} /><p>{t('આ પુષ્ટિ થયેલું નિદાન નથી. ફોટાથી કરેલું અનુમાન ખોટું હોઈ શકે છે. કૃષિ નિષ્ણાતની સમીક્ષા જરૂરી છે.')}</p><a href="#/about">{t('વધુ જાણો')} <ArrowUpRight size={14} /></a></div>
       <section className="hero-section"><div className="page-width hero-grid">
-        <div className="hero-copy"><div className="hero-kicker"><span><Leaf size={14} /></span> {t("કપાસના ખેડૂતનો ડિજિટલ સાથી")}</div>
-          <h1>{t("કપાસની ચિંતા?")}<br /><span>{t("ચાલો, સાથે સમજીએ.")}</span></h1>
-          <p className="hero-description">{t("પાન હોય, ફૂલ હોય કે કપાસનું જીંડવું — ફોટો લો અને દેખાતા લક્ષણો વિશે સરળ ગુજરાતીમાં જાણો.")}</p>
-          <div className="hero-actions"><a className="button button-primary" href="#analyze">{t("તમારો ફોટો તપાસો")} <ArrowUpRight size={19} /></a><a className="text-link" href="#how-it-works">{t("પહેલાં જાણો")} <ArrowDown size={15} /></a></div>
-          <div className="hero-features"><span><Check size={15} /> {t("ગુજરાતી સમજ")}</span><span><Check size={15} /> {t("ફોટાથી પ્રાથમિક ઓળખ")}</span><span><Check size={15} /> {t("સ્પષ્ટ અનિશ્ચિતતા")}</span></div>
-          <div className="hero-note"><ShieldCheck size={20} /><p>{t("એક ફોટો, થોડી વધુ સમજ.")}<br /><strong>{t("અંતિમ નિર્ણય માટે નિષ્ણાત તમારી સાથે.")}</strong></p></div>
-          <FieldArt />
-        </div>
         <div className="upload-wrapper" id="analyze"><form className="upload-card" onSubmit={submit}>
+          <ol className="workspace-stepper" aria-label={t('તપાસની પ્રગતિ')}><li className={!result ? 'current' : ''}><span>1</span>{t('ફોટો')}</li><li className={result ? 'current' : ''}><span>2</span>{t('અવલોકન')}</li><li><span>3</span>{t('આગળનું પગલું')}</li></ol>
           <div className="upload-card-heading"><span className="icon-box"><ScanLine size={23} /></span><div><p className="eyebrow">{t("પહેલું પગલું")}</p><h2>{t("તમારા પાકનો ફોટો ઉમેરો")}</h2></div><span className="step-pill">01 / 03</span></div>
           <p className="upload-description">{t("અસરગ્રસ્ત ભાગનો નજીકથી, સ્પષ્ટ ફોટો પસંદ કરો.")}</p>
           <input ref={fileInput} id="crop-photo" className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" aria-label={t("કપાસનો ફોટો પસંદ કરો")} onChange={event => choose(event.target.files?.[0])} />
@@ -195,11 +282,13 @@ export default function App() {
           {error && <div role="alert" className="error-box"><TriangleAlert size={18} /><p>{t(error)}</p></div>}
           <button className="button analyze-button" disabled={!image || preparing || analyzing || !available || (mode === 'live' && !consent)} type="submit">{analyzing ? <><LoaderCircle size={19} className="animate-spin" /> {mode === 'demo' ? t('ડેમો તૈયાર થાય છે…') : t('વિશ્લેષણ થઈ રહ્યું છે…')}</> : <><Sparkles size={18} /> {mode === 'demo' ? t('ડેમો પરિણામ જુઓ') : t('ફોટાનું વિશ્લેષણ કરો')} <ArrowRight size={18} /></>}</button>
           {analyzing && <p className="loading-detail" role="status">{mode === 'demo' ? t('માત્ર નમૂનાનું પરિણામ તૈયાર થાય છે.') : elapsed > 15 ? t('થોડો વધુ સમય લાગી રહ્યો છે. તમે ફોટો દૂર કરીને રદ કરી શકો છો.') : t('દેખાતા લક્ષણો અને અનિશ્ચિતતાનું અવલોકન થાય છે.')}</p>}
-          <p className="upload-privacy"><LockKeyhole size={12} /> {t("આ MVP ફોટો કે રિપોર્ટ કાયમી સંગ્રહતું નથી.")}</p>
-        </form><div className="below-upload"><Leaf size={14} /> {t("સમજૂતીથી શરૂઆત. કાળજીથી આગળ.")}</div></div>
+          <p className="upload-privacy"><LockKeyhole size={12} /> {t("AI તપાસ ફોટો સાચવતી નથી. સંશોધન માટે અલગ સંમતિ આપો.")}</p>
+        </form><ResearchContribution publicResearchAccess={Boolean(capabilities?.publicResearchAccess)} image={image} analysisReceipt={result?.analysisReceipt} language={language} available={Boolean(capabilities?.researchAvailable)} onSaved={() => setResearchRevision(value => value + 1)} /><div className="below-upload"><Leaf size={14} /> {t("સમજૂતીથી શરૂઆત. કાળજીથી આગળ.")}</div></div>
+        <div className="workspace-results" aria-busy={analyzing}><div className="workspace-results-topline"><span><ScanLine size={15} />{t('તમારા પાકનું અવલોકન')}</span><span className={result ? 'status-ready' : ''}><span className="status-dot" />{analyzing ? t('વિશ્લેષણ થઈ રહ્યું છે…') : result ? t('અવલોકન તૈયાર છે') : error ? t('ફરી પ્રયાસ કરો') : t('ફોટાની રાહ જોઈ રહ્યા છીએ')}</span></div>{result ? <Result result={result} onRetake={reset} language={language} image={image} /> : <ReviewPlaceholder language={language} analyzing={analyzing} mode={mode} hasImage={!!image} />}</div>
       </div></section>
-      {result && <Result result={result} onRetake={reset} language={language} />}
-      <section className="how-section page-width" id="how-it-works"><div className="section-intro"><div><p className="eyebrow">{t("સરળ છે. તમારી ભાષામાં છે.")}</p><h2>{t("વધુ સમજ, માત્ર ત્રણ પગલાંમાં.")}</h2></div><p>{t("ખેતરથી સીધો ફોટો.")}<br />{t("સરળ ભાષામાં પ્રાથમિક સમજ.")}</p></div>
+      </div>}{accountUser&&['research','my-submissions'].includes(page)&&routeAccess(page,accountUser)===page&&<div className="route-page"><ResearchHub key={page} initialScope={page==='research'?'dataset':'mine'} publicResearchAccess={Boolean(capabilities?.publicResearchAccess)} onRetry={connect} language={language} revision={researchRevision} available={Boolean(capabilities?.researchAvailable)} /></div>}
+      {accountUser&&page==='community'&&<div className="route-page"><Community language={language} available={capabilities?.services?.community==='sqlite'||Boolean(capabilities?.researchAvailable)} /></div>}
+      <div className="route-page" hidden={page!=='guide'}><section className="how-section page-width" id="how-it-works"><div className="section-intro"><div><p className="eyebrow">{t("સરળ છે. તમારી ભાષામાં છે.")}</p><h2>{t("વધુ સમજ, માત્ર ત્રણ પગલાંમાં.")}</h2></div><p>{t("ખેતરથી સીધો ફોટો.")}<br />{t("સરળ ભાષામાં પ્રાથમિક સમજ.")}</p></div>
         <div className="steps-grid">{[
           { icon: Camera, title: t('સ્પષ્ટ ફોટો લો'), description: t('પાન, ફૂલ કે જીંડવાનો ફોટો ઉમેરો. અસરગ્રસ્ત ભાગ સ્પષ્ટ દેખાય તે ધ્યાનમાં રાખો.') },
           { icon: ScanLine, title: t('દેખાતા લક્ષણો સમજો'), description: t('AI સંભવિત ઓળખ અને તેની અનિશ્ચિતતા સમજાવે છે. તેને અંતિમ નિદાન માનશો નહીં.') },
@@ -209,8 +298,8 @@ export default function App() {
       <section className="guidance-section page-width" id="guidance"><div className="guidance-main"><span className="guidance-icon"><ShieldCheck size={29} /></span><div><p className="eyebrow">{t("વિશ્વાસ પહેલાં, દાવો પછી.")}</p><h2>{t("માર્ગદર્શન, જવાબદારી સાથે.")}</h2><p>{t("AI નો અંદાજ અને ચકાસાયેલ કૃષિ સલાહ અલગ છે. માત્ર મંજૂર સ્રોત અને નિષ્ણાત સમીક્ષા ધરાવતી માહિતી જ ઉપચાર માટે બતાવવામાં આવશે.")}</p><span className="catalog-status"><span /> {t("સમીક્ષિત કૃષિ સામગ્રી હજી જોડાયેલી નથી")}</span></div></div>
         <div className="guidance-aside"><FileCheck2 size={24} /><h3>{t("અંદાજને નિદાન ન માનશો.")}</h3><p>{t("અસ્પષ્ટ ફોટો, બદલાતું હવામાન કે સમાન લક્ષણો ઓળખને અસર કરી શકે છે. નિષ્ણાતની પુષ્ટિ મહત્વની છે.")}</p></div>
       </section>
-      <section className="faq-section page-width"><div><p className="eyebrow"><CircleHelp size={15} /> {t("થોડું વધુ જાણો")}</p><h2>{t("તમારા મનના સવાલ.")}</h2></div><div className="faq-list"><details><summary>{t("શું આ પરિણામ પાકનું ચોક્કસ નિદાન છે?")}</summary><p>{t("ના. આ ફોટામાં દેખાતા લક્ષણોનું પ્રાથમિક AI અવલોકન છે. પાકના નિર્ણય પહેલાં કૃષિ નિષ્ણાતની પુષ્ટિ લો.")}</p></details><details><summary>{t("મારો ફોટો ક્યાં જાય છે?")}</summary><p>{t("લાઇવ મોડમાં તમારી સંમતિ પછી તૈયાર કરેલો ફોટો Google Gemini ને મોકલાય છે. ડેમોમાં ફોટો બહારની AI સેવાને મોકલાતો નથી. આ એપ ફોટો કે રિપોર્ટ કાયમી સંગ્રહતી નથી. Google ની પોતાની ડેટા નીતિઓ લાગુ પડે છે.")}</p></details><details><summary>{t("ડેમો અને લાઇવ પરિણામમાં શું તફાવત છે?")}</summary><p>{t("ડેમો પહેલેથી લખેલું નમૂનાનું પરિણામ છે. તે તમારા ફોટાને ઓળખતું નથી. લાઇવ મોડમાં Gemini ફોટાના દેખાતા લક્ષણોનું અવલોકન કરે છે; તે પણ પુષ્ટિ થયેલું નિદાન નથી.")}</p></details></div></section>
-    </main>
-    <footer className="site-footer"><div className="page-width footer-inner"><a href="#" className="footer-brand"><CottonMark /> {t("કપાસમિત્ર")} <span lang="en">AI</span></a><p>{t("ખેડૂત માટે બનાવેલું. ગુજરાતીમાં.")}</p><span>{t("પ્રાથમિક અવલોકન · નિષ્ણાતની સલાહનો વિકલ્પ નથી")}</span></div></footer>
-  </>;
-}
+      </div><div className="route-page" hidden={page!=='about'}><section className="faq-section page-width" id="about"><div><p className="eyebrow"><CircleHelp size={15} /> {t("થોડું વધુ જાણો")}</p><h2>{t("તમારા મનના સવાલ.")}</h2></div><div className="faq-list"><details><summary>{t("શું આ પરિણામ પાકનું ચોક્કસ નિદાન છે?")}</summary><p>{t("ના. આ ફોટામાં દેખાતા લક્ષણોનું પ્રાથમિક AI અવલોકન છે. પાકના નિર્ણય પહેલાં કૃષિ નિષ્ણાતની પુષ્ટિ લો.")}</p></details><details><summary>{t("મારો ફોટો ક્યાં જાય છે?")}</summary><p>{t("લાઇવ મોડમાં સંમતિ પછી ફોટો Google Gemini ને મોકલાય છે. ડેમો બહારની AI સેવાને ફોટો મોકલતો નથી. સામાન્ય AI તપાસ ફોટો સાચવતી નથી. સંશોધન માટે અલગ સંમતિ આપો ત્યારે ફોટો અને વિગતો ડેટાબેઝમાં સાચવાય છે અને અધિકૃત સંશોધકો જોઈ શકે છે. Google ની પોતાની ડેટા નીતિઓ લાગુ પડે છે.")}</p></details><details><summary>{t("ડેમો અને લાઇવ પરિણામમાં શું તફાવત છે?")}</summary><p>{t("ડેમો પહેલેથી લખેલું નમૂનાનું પરિણામ છે. તે તમારા ફોટાને ઓળખતું નથી. લાઇવ મોડમાં Gemini ફોટાના દેખાતા લક્ષણોનું અવલોકન કરે છે; તે પણ પુષ્ટિ થયેલું નિદાન નથી.")}</p></details></div></section>
+    </div><div className="route-page" hidden={page!=='settings'}><SettingsDialog embedded language={language} setLanguage={value=>{activeRequest.current?.abort();setAnalyzing(false);setLanguage(value);}} theme={theme} setTheme={setTheme} reducedMotion={reducedMotion} setReducedMotion={setReducedMotion} onClose={()=>{window.location.hash="/crop";setPage("crop");}} /></div></main>
+    <footer className="site-footer"><div className="page-width footer-inner"><a href="#/crop" className="footer-brand"><CottonMark /> {t("કપાસમિત્ર")} <span lang="en">AI</span></a><p>{t("ખેડૂત માટે બનાવેલું. ગુજરાતીમાં.")}</p><span>{t("પ્રાથમિક અવલોકન · નિષ્ણાતની સલાહનો વિકલ્પ નથી")}</span></div></footer>
+    </div>
+  </div>;}
