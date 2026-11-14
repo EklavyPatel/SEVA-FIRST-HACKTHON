@@ -24,10 +24,11 @@ export const responseSchema = {
   required: ['image_assessment', 'possibilities', 'visible_symptoms_gu', 'explanation_gu', 'uncertainty'],
 };
 
-const systemPrompt = `You are a cautious cotton-photo visual observation assistant for Gujarati-speaking farmers.
-Return only the requested JSON. All _gu fields must be plain Gujarati. Names are possible conditions,
+const systemPrompt = language => `You are a cautious cotton-photo visual observation assistant for ${language === 'en' ? 'English' : 'Gujarati'}-speaking farmers.
+Return only the requested JSON. ${language === 'en' ? 'All descriptive fields and condition names must be plain English.' : 'All _gu fields must be plain Gujarati. In name_gu use the Gujarati common name or a Gujarati-script transliteration; name_en is the separate English/scientific name.'}
+Names are possible conditions,
 NEVER a confirmed diagnosis. Only describe visible features actually supported by this photograph.
-If not clearly cotton or image is inadequate, return no possibilities and explain uncertainty in Gujarati.
+If not clearly cotton or image is inadequate, return no possibilities and explain uncertainty in ${language === 'en' ? 'English' : 'Gujarati'}.
 Include at most three possible pests/diseases only when supported; never force a disease on a healthy image.
 Uncertainty is a qualitative model estimate, not a calibrated probability. Do not provide confidence percentages.
 Never give treatments, pesticide/fungicide names, spraying instructions, remedies, prevention instructions,
@@ -84,7 +85,7 @@ export async function analyzeWithGemini(image, { apiKey, model, fetchImpl, signa
         { inlineData: { mimeType: image.mimeType, data: image.base64 } },
       ] }],
       config: {
-        systemInstruction: languageInstruction(language) + "\n" + (language === 'en' ? systemPrompt.replace('Gujarati-speaking', 'English-speaking').replace('All _gu fields must be plain Gujarati.', 'All descriptive fields must be plain English.').replace('uncertainty in Gujarati', 'uncertainty in English') : systemPrompt),
+        systemInstruction: languageInstruction(language) + "\n" + systemPrompt(language),
         responseMimeType: 'application/json',
         responseSchema: language === 'en' ? englishResponseSchema(responseSchema) : responseSchema,
         maxOutputTokens: 4096,
@@ -130,7 +131,7 @@ export async function analyzeWithGemini(image, { apiKey, model, fetchImpl, signa
     if (!text || Buffer.byteLength(text, 'utf8') > 100_000) throw new Error('Invalid response size');
     const parsed = JSON.parse(text);
     const validated = validateAnalysis(language === 'en' ? renameAnalysis(parsed, 'gu') : parsed);
-    for (const text of [validated.explanation_gu, validated.uncertainty.reason_gu, ...validated.visible_symptoms_gu, ...validated.possibilities.map(item => item.evidence_gu)]) requireOutputLanguage(text, language);
+    for (const text of [validated.explanation_gu, validated.uncertainty.reason_gu, ...validated.visible_symptoms_gu, ...validated.possibilities.flatMap(item => [item.name_gu, item.evidence_gu])]) requireOutputLanguage(text, language);
     onMetadata({modelVersion:typeof response.modelVersion==='string' && /^[A-Za-z0-9._:/-]{1,120}$/.test(response.modelVersion)?response.modelVersion:null});
     return language === 'en' ? renameAnalysis(validated, 'en') : validated;
   } catch (error) {

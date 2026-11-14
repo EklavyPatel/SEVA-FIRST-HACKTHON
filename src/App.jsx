@@ -6,6 +6,7 @@ import { ArrowDown, ArrowRight, ArrowUpRight, Camera, Check, CheckCircle2, Chevr
   FileCheck2, FlaskConical, ImagePlus, Leaf, LoaderCircle, LockKeyhole, RefreshCw, ScanLine,
   ShieldCheck, Sparkles, Sprout, TriangleAlert, Upload, X, Languages, LayoutDashboard, BookOpen, Download, Printer, Sun, Moon, MoveUpRight, Settings2 } from 'lucide-react';
 import Community, { Followup } from './components/Community.jsx';
+import {ReadAloud} from './components/VoiceAssistant.jsx';
 import { prepareImage } from './lib/images.js';
 import { analyzeImage, loadCapabilities } from './lib/api.js';
 import { translator } from './lib/i18n.js';
@@ -21,7 +22,7 @@ function CottonMark({ className = '' }) {
   </svg>;
 }
 
-function Result({ result, onRetake, language, image }) {
+function Result({ result, onRetake, onReanalyze, canReanalyze, language, image }) {
   const t = translator(language);
   const heading = useRef(null);
   useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [result]);
@@ -29,6 +30,13 @@ function Result({ result, onRetake, language, image }) {
   const analysis = result.language === 'en' ? renameAnalysis(result.analysis, 'gu') : result.analysis;
   const text = value => mode === 'demo' ? t(value) : value;
   const uncertainty = { low: t('ઓછી'), medium: t('મધ્યમ'), high: t('વધુ') }[analysis.uncertainty.level];
+  if (mode === 'live' && (result.language || 'gu') !== language) return <section id="results" className="result-section page-width" data-testid="results">
+    <p className="language-result-note" role="status">{t('આ પરિણામ અગાઉની ભાષામાં છે. પસંદ કરેલી ભાષામાં નવું વિશ્લેષણ કરવા ફરી પ્રયાસ કરો.')}</p>
+    <p className="research-help">{language === 'gu' ? 'તમારો ફોટો તૈયાર છે. નીચેનું બટન દબાવવાથી ગુજરાતીમાં નવું વિશ્લેષણ થશે અને AI ક્વોટા વપરાશે.' : 'Your photo is ready. Use the button below to generate a new English analysis; this uses AI quota.'}</p>
+    {!canReanalyze && <p className="research-help">{language === 'gu' ? 'ફોટો AI ને મોકલવા માટે પહેલાં ફોટા નીચેનું સંમતિ બોક્સ પસંદ કરો.' : 'First select the consent checkbox below your photo to send it to AI.'}</p>}
+    <button className="button button-primary" type="button" disabled={!canReanalyze} onClick={onReanalyze}><RefreshCw size={16}/>{language === 'gu' ? 'ગુજરાતીમાં ફરી વિશ્લેષણ કરો' : 'Analyze again in English'}</button>
+  </section>;
+  const spokenReview = [mode === 'demo' ? t('સિમ્યુલેશન — તમારા ફોટાનું AI વિશ્લેષણ થયું નથી.') : t('આ પુષ્ટિ થયેલું નિદાન નથી. ફોટાથી કરેલું અનુમાન ખોટું હોઈ શકે છે. કૃષિ નિષ્ણાતની સમીક્ષા જરૂરી છે.'), ...analysis.possibilities.map(item => `${text(item.name_gu)}. ${text(item.evidence_gu)}`), ...analysis.visible_symptoms_gu.map(text), text(analysis.explanation_gu), `${t('અનિશ્ચિતતા:')} ${uncertainty}. ${text(analysis.uncertainty.reason_gu)}`, t('આગળનું પગલું: તમારા વિસ્તારના કૃષિ નિષ્ણાત સાથે ફોટો અને દેખાતા લક્ષણો શેર કરો.')].join('\n');
   function saveReview() {
     const lines = [t('કપાસમિત્ર') + ' AI', mode === 'demo' ? t('સિમ્યુલેશન — તમારા ફોટાનું AI વિશ્લેષણ થયું નથી.') : t('આ પુષ્ટિ થયેલું નિદાન નથી. ફોટાથી કરેલું અનુમાન ખોટું હોઈ શકે છે. કૃષિ નિષ્ણાતની સમીક્ષા જરૂરી છે.'),
       ...analysis.possibilities.map(item => `${text(item.name_gu)}: ${text(item.evidence_gu)}`),
@@ -48,7 +56,7 @@ function Result({ result, onRetake, language, image }) {
       <button className="button button-outline" onClick={onRetake}><RefreshCw size={17} /> {t("નવો ફોટો લો")}</button>
     </div>
     {mode === 'demo' && <div className="demo-result-note" role="note"><FlaskConical size={21} /><div><strong>{t("સિમ્યુલેશન — તમારા ફોટાનું AI વિશ્લેષણ થયું નથી.")}</strong><p>{t("આ માત્ર એપ્લિકેશનનું ઉદાહરણ છે. પાક અંગે નિર્ણય લેવા આ પરિણામ વાપરશો નહીં.")}</p></div></div>}
-    {mode === 'live' && (result.language || 'gu') !== language && <p className="language-result-note" role="note">{t('આ પરિણામ અગાઉની ભાષામાં છે. પસંદ કરેલી ભાષામાં નવું વિશ્લેષણ કરવા ફરી પ્રયાસ કરો.')}</p>}
+    <ReadAloud key={'voice:'+language} text={spokenReview} language={language}/>
     {image && <figure className="review-photo"><img src={image.preview} alt={t('વિશ્લેષણ માટે પસંદ કરેલો પાકનો ફોટો')} /><figcaption><span>{image.illustration ? t('નમૂનાનું ચિત્ર') : image.name}</span><strong>{mode === 'demo' ? t('ડેમો મોડ · સિમ્યુલેશન') : t('લાઇવ AI વિશ્લેષણ')}</strong></figcaption></figure>}
     <div className="result-grid">
       <article className="result-card">
@@ -77,7 +85,7 @@ function Result({ result, onRetake, language, image }) {
     </article>
     <div className="review-actions"><button type="button" className="button button-outline" onClick={saveReview}><Download size={16} />{t('ટેક્સ્ટ સાચવો')}</button><button type="button" className="button button-primary" onClick={() => window.print()}><Printer size={16} />{t('પ્રિન્ટ / PDF સાચવો')}</button></div>
     <section className="next-step-plan"><h3>{language==='en'?'What to do next':'હવે શું કરવું?'}</h3><ol>{(language==='en' ? (analysis.image_assessment==='cotton' ? ['Inspect the affected part and leaf undersides in daylight.','Take a close-up and a whole-plant photo; note when symptoms started and whether they are spreading.','Share these observations with a local agricultural expert before choosing a treatment.'] : ['Retake a clear daylight photo of the affected cotton plant.','Include both the affected part and the whole plant so an expert can assess the context.']) : (analysis.image_assessment==='cotton' ? ['દિવસના પ્રકાશમાં અસરગ્રસ્ત ભાગ અને પાનની નીચેની બાજુ તપાસો.','નજીકનો અને આખા છોડનો ફોટો લો; લક્ષણો ક્યારથી છે અને ફેલાય છે કે નહીં તેની નોંધ લો.','ઉપચાર પસંદ કરતાં પહેલાં આ વિગતો સ્થાનિક કૃષિ નિષ્ણાત સાથે શેર કરો.'] : ['દિવસના પ્રકાશમાં કપાસના અસરગ્રસ્ત છોડનો સ્પષ્ટ ફોટો ફરી લો.','અસરગ્રસ્ત ભાગ અને આખા છોડના ફોટા લો જેથી નિષ્ણાત સંદર્ભ સમજી શકે.'])).map(step=><li key={step}>{step}</li>)}</ol><p className="research-help">{language==='en'?'These are observation and escalation steps, not a disease-specific treatment plan.':'આ અવલોકન અને નિષ્ણાતની મદદ માટેનાં પગલાં છે, રોગ-વિશેષ ઉપચાર નથી.'}</p></section>
-    <Followup image={image} result={result} language={language} />
+    <Followup key={'followup:'+language} image={image} result={result} language={language} />
     <p className="result-meta"><LockKeyhole size={13} /> {t("રિપોર્ટ કે સંશોધન ફક્ત સંમતિથી.")}{mode === 'live' && <> {t("· મોડેલ:")} <span lang="en">{result.model}</span></>}</p>
   </section>;
 }
@@ -284,7 +292,7 @@ export default function App({emailLink} = {}) {
           {analyzing && <p className="loading-detail" role="status">{mode === 'demo' ? t('માત્ર નમૂનાનું પરિણામ તૈયાર થાય છે.') : elapsed > 15 ? t('થોડો વધુ સમય લાગી રહ્યો છે. તમે ફોટો દૂર કરીને રદ કરી શકો છો.') : t('દેખાતા લક્ષણો અને અનિશ્ચિતતાનું અવલોકન થાય છે.')}</p>}
           <p className="upload-privacy"><LockKeyhole size={12} /> {t("AI તપાસ ફોટો સાચવતી નથી. સંશોધન માટે અલગ સંમતિ આપો.")}</p>
         </form><ResearchContribution publicResearchAccess={Boolean(capabilities?.publicResearchAccess)} image={image} analysisReceipt={result?.analysisReceipt} language={language} available={Boolean(capabilities?.researchAvailable)} onSaved={() => setResearchRevision(value => value + 1)} /><div className="below-upload"><Leaf size={14} /> {t("સમજૂતીથી શરૂઆત. કાળજીથી આગળ.")}</div></div>
-        <div className="workspace-results" aria-busy={analyzing}><div className="workspace-results-topline"><span><ScanLine size={15} />{t('તમારા પાકનું અવલોકન')}</span><span className={result ? 'status-ready' : ''}><span className="status-dot" />{analyzing ? t('વિશ્લેષણ થઈ રહ્યું છે…') : result ? t('અવલોકન તૈયાર છે') : error ? t('ફરી પ્રયાસ કરો') : t('ફોટાની રાહ જોઈ રહ્યા છીએ')}</span></div>{result ? <Result result={result} onRetake={reset} language={language} image={image} /> : <ReviewPlaceholder language={language} analyzing={analyzing} mode={mode} hasImage={!!image} />}</div>
+        <div className="workspace-results" aria-busy={analyzing}><div className="workspace-results-topline"><span><ScanLine size={15} />{t('તમારા પાકનું અવલોકન')}</span><span className={result ? 'status-ready' : ''}><span className="status-dot" />{analyzing ? t('વિશ્લેષણ થઈ રહ્યું છે…') : result ? t('અવલોકન તૈયાર છે') : error ? t('ફરી પ્રયાસ કરો') : t('ફોટાની રાહ જોઈ રહ્યા છીએ')}</span></div>{result ? <Result result={result} onRetake={reset} onReanalyze={submit} canReanalyze={consent} language={language} image={image} /> : <ReviewPlaceholder language={language} analyzing={analyzing} mode={mode} hasImage={!!image} />}</div>
       </div></section>
       </div>}{accountUser&&['research','my-submissions'].includes(page)&&routeAccess(page,accountUser)===page&&<div className="route-page"><ResearchHub key={page} initialScope={page==='research'?'dataset':'mine'} publicResearchAccess={Boolean(capabilities?.publicResearchAccess)} onRetry={connect} language={language} revision={researchRevision} available={Boolean(capabilities?.researchAvailable)} /></div>}
       {accountUser&&page==='community'&&<div className="route-page"><Community language={language} available={capabilities?.services?.community==='sqlite'||Boolean(capabilities?.researchAvailable)} /></div>}
