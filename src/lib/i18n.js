@@ -1,6 +1,6 @@
 // Source-language keys keep the Gujarati-first copy readable in the components.
 export const english = {
-  'ખાતું': 'Account', 'પ્રવેશ': 'Log in', 'ખાતું બનાવો': 'Sign up',
+  'ખાતું': 'Account', 'વ્યવસ્થાપક': 'Administrator', 'સંશોધન પ્રવેશ': 'Research access', 'મારા ફોટા': 'My submissions', 'પ્રવેશ': 'Log in', 'ખાતું બનાવો': 'Sign up',
  'સમુદાય':'Community',
   'સંશોધન': 'Research', 'સેટિંગ્સ': 'Settings',
   'પાકનું અવલોકન સ્ટુડિયો': 'THE CROP OBSERVATION STUDIO',
