@@ -52,7 +52,7 @@ test('same upload follows server-controlled Gujarati/English prompts and rejects
   let sent;
   const app = createApp({ apiKey: 'TEST ONLY', clientFactory: sdkMock(async options => { sent = options; return sdkResponse(language === 'gu' ? gu : en); }) });
   const r = await call(app, live(language));
-  assert.equal(r.status, 200); assert.equal(r.body.language, language); assert.equal(r.body.persisted, false);
+  assert.equal(r.status, 200); assert.equal(r.headers['permissions-policy'],'camera=(self), microphone=(self), geolocation=(self)'); assert.equal(r.body.language, language); assert.equal(r.body.persisted, false);
   assert.match(sent.config.systemInstruction, language === 'gu' ? /Gujarati script/ : /plain English/);
   assert.match(language === 'gu' ? r.body.analysis.explanation_gu : r.body.analysis.explanation, language === 'gu' ? /[\u0a80-\u0aff]/u : /visible/);
  }
@@ -60,6 +60,11 @@ test('same upload follows server-controlled Gujarati/English prompts and rejects
  const wrong = await call(app, live());
  assert.equal(wrong.status, 502); assert.equal(wrong.body.error.code, 'MODEL_LANGUAGE'); assert.ok(!wrong.body.analysis);
  assert.match(wrong.body.error.message, /ગુજરાતીમાં/);
+ const mixed=structuredClone(gu);
+ mixed.possibilities[0].name_gu='Bacterial blight';
+ const mixedResult=await call(createApp({apiKey:'TEST ONLY',clientFactory:sdkMock(async()=>sdkResponse(mixed))}),live());
+ assert.equal(mixedResult.status,502);
+ assert.equal(mixedResult.body.error.code,'MODEL_LANGUAGE','Gujarati disease names must not silently remain English');
 });
 
 test('Gujarati follow-up preserves language and rejects English answers, excessive history and dosages', async () => {

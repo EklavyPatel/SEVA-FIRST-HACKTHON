@@ -25,9 +25,10 @@ async function waitForUi(predicate) {
 }
 
 // DOM state tests, NOT a real browser: canvas/image decoding is deliberately stubbed.
-async function mount(app, { storedLanguage, accountFailure, initialRoute='crop', loginAs='a', signedOut=false } = {}) {
+async function mount(app, { storedLanguage, accountFailure, initialRoute='crop', loginAs='a', signedOut=false, speech={} } = {}) {
   const dom = new JSDOM('<!doctype html><html lang="gu"><body><div id="root"></div></body></html>', { url: 'http://127.0.0.1:5173/#/'+initialRoute, pretendToBeVisual: true });
   globalThis.window = dom.window; globalThis.document = dom.window.document;
+  Object.assign(dom.window, speech);
   if (storedLanguage) dom.window.localStorage.setItem('kapasmitra-language', storedLanguage);
   globalThis.HTMLElement = dom.window.HTMLElement; globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   dom.window.HTMLElement.prototype.scrollIntoView = () => {};
@@ -207,7 +208,7 @@ test('English live flow passes selected language through to Gemini and displays 
   let prompt;
   const ui = await mount(createApp({ apiKey: 'TEST ONLY', clientFactory: sdkMock(async options => {
     prompt = options;
-    return sdkResponse(output);
+    return sdkResponse(options.config.responseSchema.properties.explanation ? output : {image_assessment:'unclear',possibilities:[],visible_symptoms_gu:[],explanation_gu:'આ ફોટામાં દેખાતા લક્ષણો અસ્પષ્ટ છે.',uncertainty:{level:'high',reason_gu:'વધુ સ્પષ્ટ ફોટો જરૂરી છે.'}});
   }) }), { storedLanguage: 'en' });
   try {
     await ui.upload();
@@ -220,7 +221,14 @@ test('English live flow passes selected language through to Gemini and displays 
     assert.match(document.querySelector('.explanation-text').textContent, /Visible features are unclear/);
     await changeLanguage('gu');
     assert.match(document.querySelector('.language-result-note').textContent, /આ પરિણામ અગાઉની ભાષામાં છે/);
-    assert.equal(document.querySelector('.explanation-text').getAttribute('lang'), 'en');
+    assert.equal(document.querySelector('.explanation-text'), null);
+    assert.equal(document.querySelector('.followup-panel'), null);
+    assert.ok(!document.querySelector('[data-testid="results"]').textContent.includes(output.explanation));
+    await ui.click('ગુજરાતીમાં ફરી વિશ્લેષણ કરો');
+    await waitForUi(()=>document.querySelector('.explanation-text'));
+    assert.equal(document.querySelector('.explanation-text').lang,'gu');
+    assert.match(document.querySelector('.explanation-text').textContent,/અસ્પષ્ટ/);
+    assert.match(prompt.config.systemInstruction,/Gujarati script/);
   } finally { await ui.cleanup(); }
 });
 
@@ -424,4 +432,82 @@ test('landing explains open contribution versus approved dataset access; login u
   const toggle=document.querySelector('button[aria-label="Show password"]');await act(async()=>toggle.click());assert.equal(password.type,'text');
   assert.ok(document.querySelector('a[href="#/forgot-password"]'));
  }finally{await ui.cleanup();}
+});
+
+function mockSpeech() {
+ const calls={recognitions:[],utterances:[],cancels:0,voices:[{lang:'gu-IN',name:'Gujarati test voice'}]};
+ const listeners=new Set();
+ class Recognition {
+  constructor(){calls.recognitions.push(this);}
+  start(){this.started=true;}
+  stop(){this.onend?.();}
+  abort(){this.aborted=true;}
+ }
+ const speech={SpeechRecognition:Recognition,SpeechSynthesisUtterance:class {constructor(text){this.text=text;}},speechSynthesis:{
+  getVoices:()=>calls.voices,
+  addEventListener:(_,fn)=>listeners.add(fn),removeEventListener:(_,fn)=>listeners.delete(fn),
+  cancel(){calls.cancels++;},speak(utterance){calls.utterances.push(utterance);}
+ }};
+ return {calls,speech,updateVoices:()=>listeners.forEach(fn=>fn())};
+}
+const guVoiceAnalysis={image_assessment:'unclear',possibilities:[],visible_symptoms_gu:[],explanation_gu:'આ ફોટામાં લક્ષણો અસ્પષ્ટ છે.',uncertainty:{level:'high',reason_gu:'વધુ સ્પષ્ટ ફોટો જરૂરી છે.'}};
+const voiceApp=()=>createApp({apiKey:'TEST ONLY',clientFactory:sdkMock(async options=>options.config.responseMimeType?sdkResponse(guVoiceAnalysis):{text:'પાનની નીચેની બાજુ જુઓ. લક્ષણો ક્યારથી છે?',candidates:[{finishReason:'STOP'}]})});
+async function showVoiceResult(ui){
+ await ui.upload();
+ await act(async()=>document.querySelector('.upload-card .consent input').click());
+ await ui.click('ફોટાનું વિશ્લેષણ કરો');
+ await waitForUi(()=>document.querySelector('.followup-panel textarea'));
+}
+test('Gujarati voice question is reviewed before consented submission and replies use a Gujarati voice',async()=>{
+ const mock=mockSpeech();const ui=await mount(voiceApp(),{speech:mock.speech});
+ try {
+  await showVoiceResult(ui);
+  assert.equal(mock.calls.recognitions.length,0,'Microphone must require a click');
+  assert.equal(mock.calls.utterances.length,0,'No unsolicited audio');
+  await ui.click('ગુજરાતીમાં બોલીને પૂછો');
+  const recognition=mock.calls.recognitions[0];
+  assert.equal(recognition.lang,'gu-IN');
+  const textarea=document.querySelector('.followup-panel textarea');
+  assert.equal(textarea.disabled,true);
+  const result=Object.assign([{transcript:'હવે શું જોવું જોઈએ?'}],{isFinal:true});
+  await act(async()=>{recognition.onresult({results:[result]});recognition.onend();});
+  assert.equal(textarea.value,'હવે શું જોવું જોઈએ?');
+  assert.equal(document.querySelector('.followup-panel button[type="submit"]').disabled,true,'Dictation must not bypass consent');
+  assert.equal(document.querySelector('.chat-turn.model'),null);
+  await act(async()=>document.querySelector('.followup-panel input[type="checkbox"]').click());
+  await act(async()=>document.querySelector('.followup-panel button[type="submit"]').click());
+  await waitForUi(()=>document.querySelector('.chat-turn.model'));
+  assert.match(document.querySelector('.chat-turn.model').textContent,/પાનની નીચે/);
+  assert.equal(textarea.value,'');
+  await act(async()=>document.querySelector('.chat-turn.model .voice-playback button').click());
+  assert.equal(mock.calls.utterances[0].lang,'gu-IN');
+  assert.equal(mock.calls.utterances[0].voice.name,'Gujarati test voice');
+  assert.match(mock.calls.utterances[0].text,/પાનની નીચે/);
+  const cancels=mock.calls.cancels;
+  await changeLanguage('en');
+  assert.ok(mock.calls.cancels>cancels,'Switching language must stop old audio');
+  assert.equal(document.querySelector('.chat-turn.model'),null);
+ } finally {await ui.cleanup();}
+});
+test('voice permission errors, unavailable Gujarati voices, and language changes retain a usable text flow',async()=>{
+ const mock=mockSpeech();mock.calls.voices=[{lang:'en-US',name:'English only'}];
+ const ui=await mount(voiceApp(),{speech:mock.speech});
+ try {
+  await showVoiceResult(ui);
+  assert.equal(document.querySelector('.voice-playback button').disabled,true,'Do not substitute an English voice');
+  assert.match(document.querySelector('.voice-playback').textContent,/ગુજરાતી વાંચવાનો અવાજ ઉપલબ્ધ નથી/);
+  await ui.click('ગુજરાતીમાં બોલીને પૂછો');
+  await act(async()=>mock.calls.recognitions[0].onerror({error:'not-allowed'}));
+  assert.match(document.querySelector('.voice-input [role="alert"]').textContent,/પરવાનગી/);
+  assert.equal(document.querySelector('.followup-panel textarea').disabled,false);
+  mock.calls.voices=[{lang:'gu-IN',name:'Gujarati test voice'}];
+  await act(async()=>mock.updateVoices());
+  assert.equal(document.querySelector('.voice-playback button').disabled,false);
+  await ui.click('ગુજરાતીમાં બોલીને પૂછો');
+  const current=mock.calls.recognitions.at(-1);const late=current.onresult;
+  await changeLanguage('en');
+  assert.equal(current.aborted,true);
+  await act(async()=>late({results:[Object.assign([{transcript:'late words'}],{isFinal:true})]}));
+  assert.equal(document.querySelector('.followup-panel'),null,'Late voice results cannot restore the previous conversation');
+ } finally {await ui.cleanup();}
 });
